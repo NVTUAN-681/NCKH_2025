@@ -4,6 +4,7 @@ cd Git
 git config --global user.name "<user name>" : Khai báo user name
 git config --global user.email "<user email>" : Khai báo user email
 cat ~/.gitconfig : Kiểm tra thông tin user
+
 git log: kiểm tra thông tin nhánh
 
 mkdir <name folder> : Tạo 1 folder mới
@@ -27,3 +28,9 @@ git push -u origin main: Đẩy file từ local repo lên github nhánh chính
 git push -u origin <branch name>: Đẩy file từ local repo lên 1 nhánh của github (main cũng là 1 nhánh)
 git pull: Kéo, đồng bộ file từ github về máy mình
 git merge <branch name>: gộp nhánh phụ được gọi tên về nhánh chính (sau khi gửi lệnh merge lên github cần "Pull request" và "Accept request")
+
+
+
+----
+cat ~/... : đọc nội dung bên trong file bấy kỳ
+
