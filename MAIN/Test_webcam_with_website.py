@@ -7,7 +7,6 @@ import numpy as np
 import paho.mqtt.client as mqtt
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from Main import BROKER, Web_Sockets_PORT
 
 app = Flask(__name__)
 
@@ -26,8 +25,11 @@ options = HandLandmarkerOptions(
     min_hand_presence_confidence=0.6,
     min_tracking_confidence=0.6
 )
-
 # ===== CẤU HÌNH MQTT =====
+BROKER = "6419f78d6e5e4affbebe010720192414.s1.eu.hivemq.cloud"
+Web_Sockets_PORT = 8884
+PORT = 8883
+
 client = mqtt.Client(transport="websockets")
 client.ws_set_options(path="/mqtt")
 client.tls_set()  
@@ -124,11 +126,13 @@ def generate_frames():
     cap.release()
 
 @app.route('/')
+# Trang chủ trả về template HTML chứa giao diện và khung hiển thị video
 def index():
-    return render_template('Test_webcam_with_website.html')
+    return render_template('esp32.html')
 
 @app.route('/video_feed')
 def video_feed():
+    # Trả về response với nội dung là luồng video được tạo bởi generator
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == "__main__":

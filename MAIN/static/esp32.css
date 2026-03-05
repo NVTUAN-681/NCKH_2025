@@ -1,0 +1,84 @@
+        body { 
+            background-color: #eff2f1; 
+            font-family: 'Segoe UI', sans-serif; 
+        }
+        
+        .device-card { 
+            border: none; 
+            border-radius: 20px; /*lam cong vien*/
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05); /* tao bong */
+            background: white; 
+        }
+       
+        /* Light Animation */
+        .icon-light { 
+            font-size: 3rem; /*kich thuoc bong den */
+            color: #ccc; 
+            transition: 0.5s; 
+        }
+
+        .light-on {
+            color: #ffca28 !important;
+            filter: drop-shadow(0 0 15px rgba(255, 202, 40, 0.8)); /* tao 1 vung sang xung quanh bong den */
+            transform: scale(1.1); /* doi kich thuoc*/
+        }
+
+        /* Door Animation  */
+        .icon-door { 
+            font-size: 3rem; 
+            color: #607d8b; 
+            transition: 0.7s cubic-bezier(0.4, 0, 0.2, 1); 
+        }
+
+        .door-open {
+            color: #2ecc71; 
+            transform: translateX(10px); /* nhich canh cua sang phai 1 chut */
+            opacity: 0.8;
+            filter: drop-shadow(0 0 10px rgba(46, 204, 113, 0.5));
+        }
+
+        .cam-controls {
+        display: flex; /*flexbox : de dung cac lenh justify-content, align-items,...*/
+        justify-content: space-between; /* can ngang co khong gian o giua */
+        /* align-items: center; */
+        margin-bottom: 15px;
+        }
+
+        /* Toggle Switch */
+        .form-check-input:checked {
+            background-color: #2ecc71;
+            border-color: #2ecc71;
+        }
+
+        /* camera box */
+        .camera-placeholder {
+            position:relative; 
+            background: #1a252f;
+            border-radius: 15px;
+            height: 350px;
+            overflow: hidden; /* cai gi vuot qua box thi loai bo*/
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.5s;
+        }
+
+
+        .cam-off-overlay {
+            position: absolute; /*giup overlay offcam luon luon trong camera-placeholder*/
+            text-align: center;
+            color: #5d6d7e;
+        }
+
+        /*box chua 2 button cua moi card (living room/ kitchen/door)*/
+        .btn-group-custom { 
+            display: flex;
+            gap: 10px; /* khoang cach giua 2 nut */
+            margin-top: 15px; 
+        }
+
+        .btn-group-custom button { 
+            flex: 1; /* lam 2 nut on/off co dien tich bang nhau */
+            border-radius: 10px; 
+            font-weight: 600; /* lam chu dam hon */
+        }

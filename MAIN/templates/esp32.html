@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Pro Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"> <!-- bootstrap : lay code style do phai viet -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> <!-- Font Awesome :tuong tu-->
+    <!-- <link rel="stylesheet" href="esp32.css"> -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='esp32.css') }}">
+   
+</head>
+
+<body>
+<div class="container py-5"> <!-- py-5: padding truc y(trai va phai) muc do 5 -->
+
+<header class="text-center mb-5">
+    <h1 class="fw-bold text-dark">SMART HOME COMMAND</h1>
+    <p class="text-muted">Interactive Control Panel for Scientific Research Project</p>
+    <div id="connection-status" class="fw-bold" style="color: gray;">Đang kết nối hệ thống...</div>
+</header>
+
+
+    <div class="row g-4"> <!-- gutter: khoang o giua 2 cot -->
+
+        <!--LEFT (CAMERA)-->
+        <div class="col-lg-7"> <!--column large: 7/12 -->
+            
+            <div class="card device-card p-4 h-100"> <!-- padding 4, height: 100px -->
+
+                <div class="cam-controls"> 
+                    <h5 class="m-0"><i class="fas fa-video me-2"></i>Live Stream</h5> <!-- m-0: margin 0px , fas: font awesome solid - lay icon camera tu Font Awesome, me-2 : margin end 2 -->
+                    <div class="form-check form-switch"> 
+                        <input class="form-check-input" type="checkbox" id="camToggle" onchange="toggleCamera(this.checked)"> <!-- form-check: tao o tich, form-switch: chuyen doi o tich -> thanh gat ngang -->
+                        <label class="form-check-label fw-bold" for="camToggle">CAMERA ON/OFF</label> 
+                    </div> 
+                </div>
+
+                <div class="camera-placeholder" id="camContainer">
+                    <img id="streamFrame" src="" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+                    <div class="cam-off-overlay" id="camOverlay">
+                        <i class="fas fa-video-slash fa-4x mb-3"></i> <!-- icon camera gach cheo, fa-4x : x4 kich thuoc icon, margin bottom: 3 -->
+                        <p>Camera is currently <b>OFF</b></p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!--RIGHT (3 CARD)-->
+        <div class="col-lg-5"> <!-- column large: 5/12 -->
+            <div class="row g-3"> <!-- gutter: 3 khoang cach giua cac phan tu con-->
+
+                <!--LIVING ROOM-->
+                <div class="col-12"> <!-- full chieu rong cua box cha -->
+                    <div class="card device-card p-3"> <!-- padding 3 -->
+                        <div class="d-flex align-items-center"> <!-- icon va chu can giua theo chieu doc -->
+                            <div class="me-4"> <!-- margin end(ben phai) 4 -->
+                                <i id="icon-light1" class="fas fa-lightbulb icon-light"></i> <!--fas lay icon bong den trong Font Awesome-->
+                            </div>
+                            <div class="flex-grow-1"> <!-- button gian ra chiem not phan con lai box-->
+                                <h6 class="text-uppercase text-muted small mb-1">Living Room</h6> <!-- margin bottom: 1 -->
+                                <h5 class="mb-0">Main Light</h5> <!-- margin bottom: 0 -->
+                                <div class="btn-group-custom">
+                                    <button class="btn btn-outline-success btn-sm" onclick="animateDevice('light1', 'ON')">ON</button> 
+                                    <button class="btn btn-outline-danger btn-sm" onclick="animateDevice('light1', 'OFF')">OFF</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!--KITCHEN-->
+                <div class="col-12">
+                    <div class="card device-card p-3">
+                        <div class="d-flex align-items-center">
+                            <div class="me-4">
+                                <i id="icon-light2" class="fas fa-lightbulb icon-light"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h6 class="text-uppercase text-muted small mb-1">Kitchen</h6>
+                                <h5 class="mb-0">Cooking Light</h5>
+                                <div class="btn-group-custom">
+                                    <button class="btn btn-outline-success btn-sm" onclick="animateDevice('light2', 'ON')">ON</button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="animateDevice('light2', 'OFF')">OFF</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!--DOOR-->
+                <div class="col-12">
+                    <div class="card device-card p-3">
+                        <div class="d-flex align-items-center">
+                            <div class="me-4" style="perspective: 1000px;">
+                                <i id="icon-door" class="fas fa-door-closed icon-door"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h6 class="text-uppercase text-muted small mb-1">Garage</h6>
+                                <h5 class="mb-0">Security Door</h5>
+                                <div class="btn-group-custom">
+                                    <button class="btn btn-primary btn-sm" onclick="animateDevice('door', 'OPEN')">OPEN</button>
+                                    <button class="btn btn-dark btn-sm" onclick="animateDevice('door', 'CLOSE')">CLOSE</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+<!-- <script src = "esp32.js"></script> -->
+<script src="{{ url_for('static', filename='esp32.js') }}"></script>
+</body>
+</html>
