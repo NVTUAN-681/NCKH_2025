@@ -41,6 +41,7 @@ def send_led_command(state):
     pay_load = json.dumps({"led1": state})
     client.publish("data", pay_load, qos=1)
 
+
 def is_hand_open(landmarks):
     finger_tips = [8, 12, 16, 20]
     finger_pips = [6, 10, 14, 18]
@@ -60,7 +61,7 @@ def generate_frames():
     last_status = -1
     process_count_display = 0
     frame_count_display = 0
-
+ 
     with HandLandmarker.create_from_options(options) as landmarker:
         while cap.isOpened():
             success, frame = cap.read()
