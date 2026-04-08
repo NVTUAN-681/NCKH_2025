@@ -31,12 +31,12 @@ client.connect(options);
 // 4. Hàm xử lý sự kiện
 function onFail() {
     console.log("Không thể kết nối HiveMQ!");
-    document.getElementById("connection-status").innerText = "Không thể kết nối Cloud";
+    document.getElementById("connection-status").innerText = "Can't connect to Cloud";
     document.getElementById("connection-status").style.color = "red";
 }
 function onConnect() {
     console.log("Đã kết nối HiveMQ!");
-    document.getElementById("connection-status").innerText = "Đã kết nối Cloud";
+    document.getElementById("connection-status").innerText = "Cloud Connected";
     document.getElementById("connection-status").style.color = "green";
     // Đăng ký nhận trạng thái từ ESP32
     client.subscribe(TOPIC_STATUS);

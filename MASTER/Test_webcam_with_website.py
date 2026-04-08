@@ -85,8 +85,10 @@ def generate_frames():
 
             # Xử lý AI
             timestamp_ms = int(time.time() * 1000)
+            start_ai = time.time()
             result = landmarker.detect_for_video(mp_image, timestamp_ms)
             process_count += 1
+            t1 = int((time.time() - start_ai) * 1000)
 
             index_finger_tips = [] # Sẽ lưu: {'label': ..., 'x': ..., 'y': ...}
             mqtt_data = {} # Cập nhật trạng thái đèn và cửa
@@ -143,8 +145,12 @@ def generate_frames():
 
             # Chỉ gửi MQTT khi có dữ liệu mới và khác với lần gửi trước đó
             if mqtt_data and mqtt_data != last_sent_data:
+                start_mqtt = time.time()  
                 client.publish("data", json.dumps(mqtt_data), qos=1) # QoS 1 để đảm bảo tin nhắn được gửi đi
+                t2 = (time.time() - start_mqtt) * 1000
                 last_sent_data = mqtt_data.copy()
+
+                print(f"MQTT Sent: {mqtt_data} | AI Time: {t1:.2f} ms | MQTT Time: {t2:.2f} ms")
 
             cv2.putText(frame, f"FPS: {process_count_display}/{frame_count_display}", (20, 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)

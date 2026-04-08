@@ -8,7 +8,7 @@ Servo myServo;
 WebSocketsClient client;
 MQTTPubSubClient mqtt;
 
-const char* ssid = "FPT Telecom-0636_EXT";
+const char* ssid = "FPT Telecom-0636";
 const char* pass = "0903238119";
 
 #define Living_light 13
