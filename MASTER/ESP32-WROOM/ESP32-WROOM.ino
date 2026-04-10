@@ -8,8 +8,8 @@ Servo myServo;
 WebSocketsClient client;
 MQTTPubSubClient mqtt;
 
-const char* ssid = "UTC-A9";
-const char* pass = "";
+const char* ssid = "Want";
+const char* pass = "87654321";
 
 #define Living_light 13
 #define Kitchen_light 14
@@ -48,13 +48,15 @@ void setup() {
   // Đăng ký nhận dữ liệu từ topic "data"
   mqtt.subscribe("data", [](const String& payload, const size_t size){
     Serial.print("Dữ liệu về: "); Serial.println(payload);
+    uint32_t rececived_time = millis();
+
 // {
 //  "living_led":1,
 //  "kitchen_led":0,
 //  "door":1
 // }
 
-    StaticJsonDocument<200> doc;
+    StaticJsonDocument<256> doc;
     DeserializationError error = deserializeJson(doc, payload);
 
     if(error){
@@ -64,6 +66,14 @@ void setup() {
     }
 
     JsonObject obj = doc.as<JsonObject>();
+
+    if(obj.containsKey("t_sent")){
+      double t_sent = doc["t_sent"];
+      Serial.print("dữ liệu được nhận tại t = "); Serial.print(rececived_time);
+    }
+
+    Serial.print("Payload: "); Serial.println(payload);
+
 
     // Xử lý Đèn 1 (Living Room)
     if(obj.containsKey("Living_light")){
@@ -91,8 +101,17 @@ void setup() {
       }
       mqtt.publish("status/Door", String(doorPos)); // Sửa lỗi String ở đây
     }
+    StaticJsonDocument<100> resDoc;
+    resDoc["status"] = "received";
+    resDoc["esp_ms"] = rececived_time;
+    if(obj.containsKey("t_sent")) resDoc["t_sent"] = doc["t_sent"]; // Trả lại để Python đối chiếu
+    
+    char buffer[128];
+    serializeJson(resDoc, buffer);
+    mqtt.publish("feedback", buffer);
   });
 }
+
 
 void loop(){
   mqtt.update(); 

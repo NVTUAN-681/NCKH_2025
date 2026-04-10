@@ -39,6 +39,26 @@ client.username_pw_set("NCKH2026", "Nckh-2026")
 client.connect(BROKER, Web_Sockets_PORT)
 client.loop_start()
 
+def on_message(client, userdata, msg):
+    if msg.topic == "feedback":
+        try:
+            data = json.loads(msg.payload)
+            if "t_sent" in data:
+                t_sent = data["t_sent"]
+                # Tính độ trễ khứ hồi (Round Trip Time)
+                rtt = (time.time() * 1000) - t_sent
+                # Độ trễ một chiều ước tính (Latecy)
+                latency = rtt / 2
+                print(f"--- NETWORK LATENCY: {latency:.2f} ms (RTT: {rtt:.2f} ms) ---")
+        except Exception as e:
+            print(f"Error parsing feedback: {e}")
+
+client.on_message = on_message # Gán hàm xử lý
+client.connect(BROKER, Web_Sockets_PORT)
+client.subscribe("feedback") # Đăng ký nhận phản hồi từ ESP32
+client.loop_start()
+
+
 def is_hand_open(landmarks):
     finger_tips = [8, 12, 16, 20]
     finger_pips = [6, 10, 14, 18]
@@ -145,6 +165,9 @@ def generate_frames():
 
             # Chỉ gửi MQTT khi có dữ liệu mới và khác với lần gửi trước đó
             if mqtt_data and mqtt_data != last_sent_data:
+                sent_time = time.time() * 1000
+                mqtt_data["t_sent"] = sent_time
+
                 start_mqtt = time.time()  
                 client.publish("data", json.dumps(mqtt_data), qos=1) # QoS 1 để đảm bảo tin nhắn được gửi đi
                 t2 = (time.time() - start_mqtt) * 1000
