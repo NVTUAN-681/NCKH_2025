@@ -78,76 +78,139 @@ function toggleCamera(isOn) {
 
 function onMessageArrived(message) {
     const payload = message.payloadString;
-    const topic = message.destinationName;
+    const topic   = message.destinationName;
 
-    // Xử lý Heartbeat để biết thiết bị còn sống
     if (topic === TOPIC_HEARTBEAT) {
         console.log("Heartbeat từ ESP32: " + payload + "s");
+        const el = document.getElementById("connection-status");
+        if (el) {
+            el.innerText = "Device Online";
+            el.style.color = "green";
+        }
         return;
     }
 
-    if (topic === TOPIC_STATE) {
-        try {
-            let data = JSON.parse(payload);
-            console.log("[SYNC] Dữ liệu trạng thái thực tế:", data);
+    if (topic !== TOPIC_STATE) return;
 
-            // 1. Cập nhật Đèn khách
-            const iconLiving = document.getElementById('icon-Living_light');
-            if (data.Living_light == 1 || data.Living_light == true) {
-                iconLiving.classList.add('light-on');
-            } else {
-                iconLiving.classList.remove('light-on');
-            }
+    try {
+        const data = JSON.parse(payload);
+        console.log("[SYNC] State:", data);
 
-            // 2. Cập nhật Đèn bếp
-            const iconKitchen = document.getElementById('icon-Kitchen_light');
-            if (data.Kitchen_light == 1 || data.Kitchen_light == true) {
-                iconKitchen.classList.add('light-on');
-            } else {
-                iconKitchen.classList.remove('light-on');
-            }
+        // ── Cập nhật trạng thái thiết bị ──────────────────────
+        updateDeviceIcon('icon-Living_light', data.Living_light,
+            'light-on', null, null);
 
-            // 3. Cập nhật Cửa Garage
-            const iconDoor = document.getElementById('icon-Door');
-            if (data.Door === 1) {
-                iconDoor.classList.add('door-open');
-                iconDoor.classList.replace('fa-door-closed', 'fa-door-open');
-            } else {
-                iconDoor.classList.remove('door-open');
-                iconDoor.classList.replace('fa-door-open', 'fa-door-closed');
-            }
+        updateDeviceIcon('icon-Kitchen_light', data.Kitchen_light,
+            'light-on', null, null);
 
-            // 4. Hiển thị thời gian thực của ESP32 (Nếu có thẻ hiển thị)
-            if (data.esp_time) {
-                console.log("Giờ hệ thống ESP32: " + data.esp_time);
-                // Bạn có thể thêm 1 thẻ <span id="esp-clock"> trong HTML để hiện giờ này
-                const clockEl = document.getElementById('esp-clock');
-                if (clockEl) clockEl.innerText = "Device Time: " + data.esp_time;
-            }
+        updateDeviceIcon('icon-Door', data.Door,
+            'door-open', 'fa-door-closed', 'fa-door-open');
 
-        } catch (e) {
-            console.error("Lỗi đồng bộ giao diện:", e);
+        // ── Cập nhật đồng hồ ESP32 ────────────────────────────
+        if (data.esp_time) {
+            const clockEl = document.getElementById('esp-clock');
+            if (clockEl) clockEl.innerText = "Device Time: " + data.esp_time;
+        }
+
+        // ── Cập nhật đếm ngược từ ESP32 ───────────────────────
+        // ESP32 là nguồn thật — mọi tab/máy đều nhận cùng giá trị
+        const device = document.getElementById('timerDevice').value;
+        syncCountdownFromESP32(device, data);
+
+    } catch (e) {
+        console.error("[ERROR] Parse state:", e);
+    }
+}
+
+// ============================================================
+// HÀM MỚI: syncCountdownFromESP32(device, data)
+// Nhận giây còn lại từ ESP32 thay vì tự tính trong JS
+// → Mọi tab/máy đều hiển thị đúng giá trị như nhau
+// ============================================================
+function syncCountdownFromESP32(device, data) {
+    // Map tên thiết bị → prefix field trong JSON
+    const prefixMap = {
+        'Living_light':  'll',
+        'Kitchen_light': 'kl',
+        'Door':          'dr'
+    };
+    const p = prefixMap[device];
+    if (!p) return;
+
+    const isActive   = data[p + '_active'];
+    const remStart   = data[p + '_rem_start']; // giây còn lại đến khi BẬT
+    const remEnd     = data[p + '_rem_end'];   // giây còn lại đến khi TẮT
+
+    const countdownEl  = document.getElementById('countdown');
+    const statusEl     = document.getElementById('timerStatus');
+    const cancelBtn    = document.getElementById('cancelTimerBtn');
+
+    if (!isActive) {
+        // Nếu ESP32 báo không còn lịch trình → reset UI
+        if (!deviceSchedules[device]?.interval) {
+            countdownEl.innerText  = "00:00:00";
+            statusEl.innerText     = "Chưa có lịch trình nào được thiết lập";
+            cancelBtn.classList.add('d-none');
+        }
+        return;
+    }
+
+    // Lịch đang chạy — hiển thị nút Hủy
+    cancelBtn.classList.remove('d-none');
+
+    if (remStart > 0) {
+        // Chưa đến giờ bật
+        countdownEl.innerText = formatSeconds(remStart);
+        statusEl.innerText    = `Chờ đến giờ bật ${device.replace('_', ' ')}`;
+    } else if (remEnd > 0) {
+        // Đang trong khoảng hoạt động
+        countdownEl.innerText = formatSeconds(remEnd);
+        statusEl.innerText    = `${device.replace('_', ' ')} đang bật – còn lại đến khi tắt`;
+    } else {
+        countdownEl.innerText = "00:00:00";
+        statusEl.innerText    = "Lịch trình vừa kết thúc";
+    }
+}
+
+// Hàm bổ trợ: đổi giây → chuỗi "HH:MM:SS"
+function formatSeconds(totalSec) {
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+}
+
+function updateDeviceIcon(iconId, value, activeClass, classOff, classOn) {
+    const el = document.getElementById(iconId);
+    if (!el) return;
+    const isOn = (value == 1 || value === true);
+    if (isOn) {
+        el.classList.add(activeClass);
+        if (classOff && classOn) {
+            el.classList.replace(classOff, classOn);
+        }
+    } else {
+        el.classList.remove(activeClass);
+        if (classOff && classOn) {
+            el.classList.replace(classOn, classOff);
         }
     }
 }
 
-// hàm này dùng để gửi lệnh từ web đến ESP32 thông qua MQTT
+// ============================================================
+// HÀM CŨ: animateDevice() — GIỮ NGUYÊN LOGIC
+// Gửi lệnh tức thời, UI cập nhật qua home/state (không tự update)
+// ============================================================
 function animateDevice(device, action) {
-    let val = 0;
-    if (action === 'ON' || action === 'OPEN') val = 1;
-    else val = 0;
-
-    // Tạo lệnh lẻ cho từng thiết bị
-    let command = {};
+    const val = (action === 'ON' || action === 'OPEN') ? 1 : 0;
+    const command = {};
     command[device] = val;
 
-    console.log(`[SEND] Gửi lệnh tới ${device}: ${val}`);
-
+    console.log(`[CMD] ${device} → ${val}`);
     const message = new Paho.MQTT.Message(JSON.stringify(command));
     message.destinationName = TOPIC_COMMAND;
     client.send(message);
-    
-    // Lưu ý: Đã loại bỏ phần add/remove class CSS tại đây để chờ đồng bộ từ ESP32
+    // Không tự add/remove class — chờ ESP32 phản hồi qua home/state
 }
 
 
@@ -182,65 +245,43 @@ function onDeviceChange() {
     }
 }
 
+// ============================================================
+// HÀM CŨ: setSchedule() — SỬA ĐỔI
+// Gửi đúng format JSON có "device", "start_time", "end_time"
+// ESP32 xử lý lịch trình — JS chỉ gửi lệnh và chờ phản hồi
+// KHÔNG còn setInterval đếm ngược trong JS
+// ============================================================
 function setSchedule() {
-    const device = document.getElementById('timerDevice').value;
+    const device   = document.getElementById('timerDevice').value;
     const startStr = document.getElementById('startTime').value;
-    const endStr = document.getElementById('endTime').value;
+    const endStr   = document.getElementById('endTime').value;
 
     if (!startStr || !endStr) {
         alert("Vui lòng nhập đầy đủ thời gian!");
         return;
     }
 
-    // 1. Xóa lịch trình cũ CỦA RIÊNG THIẾT BỊ NÀY nếu đang chạy
-    if (deviceSchedules[device].interval) {
-        clearInterval(deviceSchedules[device].interval);
-    }
-
-    // 2. Lưu thông số mới vào Object
-    deviceSchedules[device].startTime = startStr;
-    deviceSchedules[device].endTime = endStr;
-    deviceSchedules[device].isStarted = false;
-
-    const getFullDate = (timeStr) => {
-        const [h, m] = timeStr.split(':').map(Number);
-        const d = new Date();
-        d.setHours(h, m, 0, 0);
-        return d;
+    // Gửi lệnh đặt lịch — ESP32 sẽ xử lý và gửi lại rem_start/rem_end
+    const command = {
+        device:     device,
+        start_time: startStr,  // format "HH:MM"
+        end_time:   endStr
     };
 
-    let startTime = getFullDate(startStr);
-    let endTime = getFullDate(endStr);
-    if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
+    console.log(`[SCHEDULE] Gửi lịch trình cho ${device}:`, command);
 
+    const message = new Paho.MQTT.Message(JSON.stringify(command));
+    message.destinationName = TOPIC_COMMAND;
+    client.send(message);
+
+    // Cập nhật bộ nhớ local để nút Hủy biết thiết bị nào đang có lịch
+    deviceSchedules[device].startTime  = startStr;
+    deviceSchedules[device].endTime    = endStr;
+    // KHÔNG dùng setInterval nữa — đếm ngược đến từ ESP32 qua home/state
+
+    document.getElementById('timerStatus').innerText =
+        `Đã gửi lịch trình cho ${device.replace('_', ' ')} – đang chờ xác nhận từ thiết bị...`;
     document.getElementById('cancelTimerBtn').classList.remove('d-none');
-
-    // 3. Chạy vòng lặp riêng cho thiết bị này
-    deviceSchedules[device].interval = setInterval(() => {
-        const now = new Date();
-        const currentSelectedDevice = document.getElementById('timerDevice').value;
-
-        // Logic điều khiển
-        if (now >= startTime && now < endTime) {
-            if (!deviceSchedules[device].isStarted) {
-                animateDevice(device, 'ON');
-                deviceSchedules[device].isStarted = true;
-            }
-            // Chỉ cập nhật giao diện nế người dùng ĐANG CHỌN thiết bị này trên màn hình
-            if (currentSelectedDevice === device) {
-                displayTime(endTime - now, `Đèn ${device} đang bật (đếm ngược tắt)`);
-            }
-        } 
-        else if (now >= endTime) {
-            animateDevice(device, 'OFF');
-            stopDeviceSchedule(device);
-        } 
-        else {
-            if (currentSelectedDevice === device) {
-                displayTime(startTime - now, `Chờ đến lúc bật ${device}`);
-            }
-        }
-    }, 1000);
 }
 
 function stopDeviceSchedule(device) {
@@ -265,40 +306,40 @@ function cancelTimerUI() {
     document.getElementById('cancelTimerBtn').classList.add('d-none');
 }
 
-// Hàm gọi từ nút "Hủy bỏ" trên giao diện
+// ============================================================
+// HÀM CŨ: cancelCurrentTimer() — SỬA ĐỔI
+// Gửi lệnh cancel_schedule về ESP32 thay vì chỉ clearInterval
+// ============================================================
 function cancelCurrentTimer() {
-    const device = document.getElementById('timerDevice').value;
+    const device   = document.getElementById('timerDevice').value;
     const schedule = deviceSchedules[device];
 
+    // Gửi lệnh hủy lịch về ESP32
+    const command = {
+        action: "cancel_schedule",
+        device: device
+    };
+    const message = new Paho.MQTT.Message(JSON.stringify(command));
+    message.destinationName = TOPIC_COMMAND;
+    client.send(message);
+    console.log(`[SCHEDULE] Hủy lịch trình: ${device}`);
+
+    // Nếu có setInterval cũ còn sót lại thì xóa
     if (schedule.interval) {
-        // 1. Dừng vòng lặp đếm ngược
         clearInterval(schedule.interval);
-
-        // 2. Kiểm tra nếu đèn ĐANG BẬT thì phải tắt đi
-        if (schedule.isStarted) {
-            console.log(`Lịch trình đang chạy, tiến hành tắt thiết bị: ${device}`);
-            // Gửi lệnh tắt tương ứng (OFF cho đèn, CLOSE cho cửa)
-            const offAction = (device === 'Door') ? 'CLOSE' : 'OFF';
-            animateDevice(device, offAction);
-        }
-
-        // 3. Reset dữ liệu của thiết bị trong bộ nhớ
         schedule.interval = null;
-        schedule.startTime = null;
-        schedule.endTime = null;
-        schedule.isStarted = false;
-
-        // 4. Reset giao diện nhập liệu về mặc định (Trống)
-        document.getElementById('startTime').value = "";
-        document.getElementById('endTime').value = "";
-
-        // 5. Reset khu vực hiển thị đếm ngược (Cột bên phải)
-        document.getElementById('countdown').innerText = "00:00:00";
-        document.getElementById('timerStatus').innerText = "Chưa có lịch trình nào được thiết lập";
-        document.getElementById('cancelTimerBtn').classList.add('d-none');
-
-        console.log(`Đã hủy bỏ và reset hoàn toàn cho: ${device}`);
     }
+
+    // Reset dữ liệu local
+    schedule.startTime = null;
+    schedule.endTime   = null;
+
+    document.getElementById('startTime').value  = "";
+    document.getElementById('endTime').value    = "";
+
+    // UI sẽ tự reset khi nhận phản hồi từ ESP32 qua home/state
+    document.getElementById('timerStatus').innerText =
+        "Đang hủy – chờ xác nhận từ thiết bị...";
 }
 
 // Hàm hiển thị thời gian đếm ngược lên màn hình

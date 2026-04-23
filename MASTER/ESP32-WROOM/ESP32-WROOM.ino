@@ -44,92 +44,107 @@ long timeToSeconds(String timeStr) {
 }
 
 void updateAndPublishSchedules() {
-    timeClient.update();
-    long now = (timeClient.getHours() * 3600L) + (timeClient.getMinutes() * 60L) + timeClient.getSeconds();
-    
-    // Logic tính toán và CẬP NHẬT TRẠNG THÁI ĐỒNG BỘ
-    auto updateDevice = [&](DeviceSchedule &s, int pin, bool &statusVar, bool isServo = false) {
-        if (s.timerActive) {
-            if (now < s.startTimeSec) s.remainStart = s.startTimeSec - now;
-            else s.remainStart = 0;
+  timeClient.update();
+  long now = (timeClient.getHours() * 3600L)
+           + (timeClient.getMinutes() * 60L)
+           + timeClient.getSeconds();
 
-            if (now < s.endTimeSec) s.remainEnd = s.endTimeSec - now;
-            else s.remainEnd = 0;
+  // Lambda cập nhật thiết bị đèn
+  auto updateLight = [&](DeviceSchedule &s, int pin, bool &statusVar) {
+    if (!s.timerActive) return;
 
-            // ĐẾN GIỜ BẬT
-            if (s.remainStart == 0 && now < s.endTimeSec) {
-                 if(!isServo) {
-                    digitalWrite(pin, HIGH);
-                    statusVar = true; // Cập nhật biến để gửi về Web
-                 } else {
-                    myServo.write(90);
-                    status_door = 1; // Cập nhật trạng thái cửa
-                 }
-            }
-            // ĐẾN GIỜ TẮT
-            if (s.remainEnd == 0) {
-                 if(!isServo) {
-                    digitalWrite(pin, LOW);
-                    statusVar = false; // Cập nhật biến để gửi về Web
-                 } else {
-                    myServo.write(0);
-                    status_door = 0;
-                 }
-                 s.timerActive = false; // Kết thúc lịch trình
-            }
-        }
-    };
+    bool inWindow = (now >= s.startTimeSec && now < s.endTimeSec);
 
-    updateDevice(schedLiving, Living_light, status_living);
-    updateDevice(schedKitchen, Kitchen_light, status_kitchen);
-    
-    // Riêng cửa cần ép kiểu vì status_door là int
-    bool doorBool = (status_door == 1);
-    updateDevice(schedDoor, Door, doorBool, true);
-    if(doorBool) status_door = 1; else status_door = 0;
+    if (inWindow) {
+      if (!statusVar) {              // Chỉ ghi khi trạng thái thay đổi
+        digitalWrite(pin, HIGH);
+        statusVar = true;
+        Serial.printf("[SCHED] BẬT pin %d\n", pin);
+      }
+    } else if (now >= s.endTimeSec) {
+      if (statusVar) {
+        digitalWrite(pin, LOW);
+        statusVar = false;
+        Serial.printf("[SCHED] TẮT pin %d\n", pin);
+      }
+      s.timerActive = false;
+    }
+    // Tính lại giây còn lại (Web dùng để hiển thị)
+    s.remainStart = max(0L, s.startTimeSec - now);
+    s.remainEnd   = max(0L, s.endTimeSec   - now);
+  };
 
-    // Gửi JSON gộp về Web
-    StaticJsonDocument<512> root;
-    JsonObject dev = root.createNestedObject("devices");
-    
-    auto addData = [&](const char* name, DeviceSchedule &s, bool st) {
-        JsonObject obj = dev.createNestedObject(name);
-        obj["val"] = st;
-        obj["timer_active"] = s.timerActive;
-        obj["rem_s"] = s.remainStart;
-        obj["rem_e"] = s.remainEnd;
-    };
+  // Lambda cập nhật cửa servo
+  auto updateDoor = [&](DeviceSchedule &s) {
+    if (!s.timerActive) return;
 
-    addData("Living_light", schedLiving, digitalRead(Living_light));
-    addData("Kitchen_light", schedKitchen, digitalRead(Kitchen_light));
-    addData("Door", schedDoor, (status_door == 1));
-    
-    root["esp_time"] = timeClient.getFormattedTime();
+    bool inWindow = (now >= s.startTimeSec && now < s.endTimeSec);
 
-    char buffer[512];
-    serializeJson(root, buffer);
-    mqtt.publish("home/state", buffer);
+    if (inWindow) {
+      if (status_door != 1) {
+        myServo.write(90);
+        status_door = 1;
+        Serial.println("[SCHED] MỞ cửa");
+      }
+    } else if (now >= s.endTimeSec) {
+      if (status_door != 0) {
+        myServo.write(0);
+        status_door = 0;
+        Serial.println("[SCHED] ĐÓNG cửa");
+      }
+      s.timerActive = false;
+    }
+    s.remainStart = max(0L, s.startTimeSec - now);
+    s.remainEnd   = max(0L, s.endTimeSec   - now);
+  };
+
+  updateLight(schedLiving,  Living_light,  status_living);
+  updateLight(schedKitchen, Kitchen_light, status_kitchen);
+  updateDoor(schedDoor);
+
+  // Dùng publishFullStatus() duy nhất — tránh 2 format JSON
+  publishFullStatus();
 }
 
 void publishFullStatus() {
-  timeClient.update(); // Cập nhật giờ mới nhất từ Internet
+  timeClient.update();
   String formattedTime = timeClient.getFormattedTime();
-  
-  StaticJsonDocument<256> statusDoc;
-  statusDoc["Living_light"] = status_living;
-  statusDoc["Kitchen_light"] = status_kitchen;
-  statusDoc["Door"] = status_door;
-  statusDoc["esp_time"] = formattedTime; // Gửi giờ thực của ESP về Web
-  statusDoc["status"] = "synchronized";
+  long now = (timeClient.getHours() * 3600L)
+           + (timeClient.getMinutes() * 60L)
+           + timeClient.getSeconds();
 
-  char buffer[256];
+  StaticJsonDocument<512> statusDoc;
+
+  // Trạng thái thiết bị
+  statusDoc["Living_light"]  = status_living;
+  statusDoc["Kitchen_light"] = status_kitchen;
+  statusDoc["Door"]          = status_door;
+  statusDoc["esp_time"]      = formattedTime;
+  statusDoc["status"]        = "synchronized";
+
+  // Dữ liệu lịch trình — Web dùng để hiển thị đồng hồ đếm ngược
+  // Living_light
+  statusDoc["ll_active"]    = schedLiving.timerActive;
+  statusDoc["ll_rem_start"] = schedLiving.timerActive ? max(0L, schedLiving.startTimeSec - now) : 0;
+  statusDoc["ll_rem_end"]   = schedLiving.timerActive ? max(0L, schedLiving.endTimeSec   - now) : 0;
+
+  // Kitchen_light
+  statusDoc["kl_active"]    = schedKitchen.timerActive;
+  statusDoc["kl_rem_start"] = schedKitchen.timerActive ? max(0L, schedKitchen.startTimeSec - now) : 0;
+  statusDoc["kl_rem_end"]   = schedKitchen.timerActive ? max(0L, schedKitchen.endTimeSec   - now) : 0;
+
+  // Door
+  statusDoc["dr_active"]    = schedDoor.timerActive;
+  statusDoc["dr_rem_start"] = schedDoor.timerActive ? max(0L, schedDoor.startTimeSec - now) : 0;
+  statusDoc["dr_rem_end"]   = schedDoor.timerActive ? max(0L, schedDoor.endTimeSec   - now) : 0;
+
+  char buffer[512];
   serializeJson(statusDoc, buffer);
-  
-  // Debug: Ghi lại log gửi đi
-  Serial.print("[DEBUG] Gửi trạng thái về Web lúc: ");
+
+  Serial.print("[SYNC] Gửi trạng thái lúc: ");
   Serial.println(formattedTime);
-  
-  mqtt.publish("home/state", buffer);
+
+  mqtt.publish("home/state", buffer, false, 1); // QoS 1
 }
 
 void setup() {
@@ -164,93 +179,116 @@ void setup() {
 
 // Đăng ký nhận lệnh lẻ từ Web qua topic mới
 // Đăng ký nhận lệnh từ Web (Topic nâng cấp)
-  mqtt.subscribe("home/commands", [](const String& payload, const size_t size) {
+   mqtt.subscribe("home/commands", [](const String& payload, const size_t size) {
     timeClient.update();
     Serial.println("\n------------------------------------");
-    Serial.print("[DEBUG] Lệnh nhận lúc: "); Serial.println(timeClient.getFormattedTime());
+    Serial.print("[CMD] Nhận lúc: "); Serial.println(timeClient.getFormattedTime());
     Serial.print("[PAYLOAD]: "); Serial.println(payload);
 
     StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, payload);
-    if (error) return;
+    if (deserializeJson(doc, payload)) {
+      Serial.println("[ERROR] JSON parse thất bại");
+      return;
+    }
 
     JsonObject obj = doc.as<JsonObject>();
-    String device = obj["device"] | "";
 
-    // 1. XỬ LÝ LỆNH ĐIỀU KHIỂN TỨC THỜI (Lệnh lẻ)
+    // ── 1. LỆNH TỨC THỜI (immediate control) ──────────────────
     if (obj.containsKey("Living_light")) {
-      status_living = obj["Living_light"];
+      status_living = (int)obj["Living_light"] == 1;
       digitalWrite(Living_light, status_living);
+      Serial.printf("[CMD] Living_light → %d\n", status_living);
     }
     if (obj.containsKey("Kitchen_light")) {
-      status_kitchen = obj["Kitchen_light"];
+      status_kitchen = (int)obj["Kitchen_light"] == 1;
       digitalWrite(Kitchen_light, status_kitchen);
+      Serial.printf("[CMD] Kitchen_light → %d\n", status_kitchen);
     }
     if (obj.containsKey("Door")) {
-      status_door = obj["Door"];
-      if (status_door == 1) myServo.write(90); else myServo.write(0);
+      status_door = (int)obj["Door"];
+      myServo.write(status_door == 1 ? 90 : 0);
+      Serial.printf("[CMD] Door → %d\n", status_door);
     }
 
-    // 2. XỬ LÝ THIẾT LẬP LỊCH TRÌNH (Independent Scheduler)
-    if (obj.containsKey("start_time") && obj.containsKey("end_time")) {
-      DeviceSchedule *target = nullptr;
-      if (device == "Living_light") target = &schedLiving;
-      else if (device == "Kitchen_light") target = &schedKitchen;
-      else if (device == "Door") target = &schedDoor;
+    // ── 2. ĐẶT LỊCH TRÌNH ─────────────────────────────────────
+    // Format Web gửi: { "device":"Living_light", "start_time":"22:00", "end_time":"06:00" }
+    if (obj.containsKey("start_time") && obj.containsKey("end_time") && obj.containsKey("device")) {
+      String device    = obj["device"].as<String>();
+      long   startSec  = timeToSeconds(obj["start_time"].as<String>());
+      long   endSec    = timeToSeconds(obj["end_time"].as<String>());
 
-      if (target != nullptr) {
-        target->startTimeSec = timeToSeconds(obj["start_time"]);
-        target->endTimeSec = timeToSeconds(obj["end_time"]);
-        target->timerActive = true;
-        Serial.printf("[INFO] Đã đặt lịch cho %s: %s -> %s\n", 
-                      device.c_str(), obj["start_time"].as<const char*>(), obj["end_time"].as<const char*>());
+      // Xử lý qua đêm: nếu endSec <= startSec, cộng thêm 1 ngày (86400s)
+      if (endSec <= startSec) endSec += 86400L;
+
+      DeviceSchedule* target = nullptr;
+      if      (device == "Living_light")  target = &schedLiving;
+      else if (device == "Kitchen_light") target = &schedKitchen;
+      else if (device == "Door")          target = &schedDoor;
+
+      if (target) {
+        target->startTimeSec = startSec;
+        target->endTimeSec   = endSec;
+        target->timerActive  = true;
+        Serial.printf("[SCHED] Đặt lịch %s: %s → %s\n",
+          device.c_str(),
+          obj["start_time"].as<const char*>(),
+          obj["end_time"].as<const char*>());
       }
     }
 
-    // 3. XỬ LÝ HỦY LỊCH TRÌNH
-    if (obj["action"] == "clear_schedule") {
-      if (device == "Living_light") schedLiving.timerActive = false;
-      else if (device == "Kitchen_light") schedKitchen.timerActive = false;
-      else if (device == "Door") schedDoor.timerActive = false;
-      Serial.printf("[INFO] Đã hủy lịch trình của: %s\n", device.c_str());
+    // ── 3. HỦY LỊCH TRÌNH ─────────────────────────────────────
+    // Format Web gửi: { "action":"cancel_schedule", "device":"Living_light" }
+    if (obj["action"] == "cancel_schedule" && obj.containsKey("device")) {
+      String device = obj["device"].as<String>();
+      DeviceSchedule* target = nullptr;
+      if      (device == "Living_light")  target = &schedLiving;
+      else if (device == "Kitchen_light") target = &schedKitchen;
+      else if (device == "Door")          target = &schedDoor;
+
+      if (target) {
+        target->timerActive  = false;
+        target->startTimeSec = -1;
+        target->endTimeSec   = -1;
+        target->remainStart  = 0;
+        target->remainEnd    = 0;
+        Serial.printf("[SCHED] Đã hủy lịch: %s\n", device.c_str());
+      }
     }
 
-    // Gửi phản hồi gộp ngay lập tức sau khi nhận lệnh
-    updateAndPublishSchedules();
+    // Phản hồi trạng thái ngay sau khi xử lý lệnh
+    publishFullStatus();
     Serial.println("------------------------------------");
   });
 }
 
 
 void loop() {
-  // Duy trì kết nối MQTT và WebSocket
   client.loop();
   mqtt.update();
 
-  // Kiểm tra kết nối WiFi
+  // WiFi reconnect non-blocking (không dùng delay)
+  static uint32_t lastWifiRetry = 0;
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[ERROR] Mất WiFi, đang kết nối lại...");
-    WiFi.begin(ssid, pass);
-    delay(5000);
-    return;
+    if (millis() - lastWifiRetry >= 5000) {
+      lastWifiRetry = millis();
+      Serial.println("[WARN] Mất WiFi, thử kết nối lại...");
+      WiFi.begin(ssid, pass);
+    }
+    return; // Chưa có WiFi thì không làm gì thêm
   }
 
-  // CƠ CHẾ ĐỒNG BỘ MỖI 1 GIÂY
+  // Đồng bộ mỗi 1 giây
   static uint32_t lastTick = 0;
   if (millis() - lastTick >= 1000) {
     lastTick = millis();
-    
-    // Cập nhật giờ từ NTP
     timeClient.update();
-    
-    // Tính toán lịch trình, thực thi lệnh và gửi dữ liệu gộp về Web
-    updateAndPublishSchedules();
-    
-    // Gửi Heartbeat định kỳ (10s/lần) lên topic giám sát
-    static int heartbeatCount = 0;
-    if (++heartbeatCount >= 10) {
+    updateAndPublishSchedules(); // Tính lịch + gửi state gộp
+
+    // Heartbeat mỗi 10 giây
+    static int hbCount = 0;
+    if (++hbCount >= 10) {
+      hbCount = 0;
       mqtt.publish("home/heartbeat", String(millis() / 1000));
-      heartbeatCount = 0;
     }
   }
 }
